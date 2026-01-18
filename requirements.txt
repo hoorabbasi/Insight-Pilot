@@ -1,0 +1,22 @@
+# Core
+python-dotenv
+
+# Data
+pandas
+openpyxl
+
+# Database
+sqlalchemy
+
+# Visualization
+matplotlib
+
+# UI
+streamlit
+
+# LLM / Agent
+langchain
+langchain-google-genai
+
+# PDF Reports
+reportlab
