@@ -3,9 +3,9 @@ pandas
 sqlalchemy
 
 langchain
+langchain-core
 langchain-community
 langchain-google-genai
-langchain-core
 
 google-generativeai
 matplotlib
