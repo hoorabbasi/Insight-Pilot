@@ -2,9 +2,10 @@ streamlit
 pandas
 sqlalchemy
 
-langchain==0.1.20
-langchain-community==0.0.38
-langchain-google-genai==0.0.11
+langchain
+langchain-community
+langchain-google-genai
+langchain-core
 
 google-generativeai
 matplotlib
