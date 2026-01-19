@@ -54,7 +54,10 @@ if "chat_name" not in st.session_state:
 with st.sidebar:
     st.header("⚙️ Setup")
 
-    api_key = st.text_input("Enter Gemini API Key", type="password")
+    secret_api_key = st.secrets.get("GOOGLE_API_KEY", "")
+    user_api_key = st.text_input("Enter Gemini API Key (optional)", type="password")
+
+    api_key = user_api_key if user_api_key else secret_api_key
 
     uploaded_file = st.file_uploader(
         "Upload your data file",
@@ -63,26 +66,22 @@ with st.sidebar:
 
     st.divider()
 
-    # ✅ FIX 1: Safe agent check
+    # Sidebar tools only after agent exists
     if st.session_state.get("agent") is not None:
 
         col1, col2 = st.columns(2)
 
         # ---------------- SAVE CHAT ----------------
         with col1:
-            
             if st.button("💾 Save Chat", use_container_width=True):
-                if len(st.session_state.messages) > 0:
+                if st.session_state.messages:
                     chat_data = {
                         "chat_name": st.session_state.chat_name,
                         "messages": st.session_state.messages,
                         "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
-                    filename = f"{st.session_state.chat_name}.json"
-                    if save_chat_to_file(chat_data, filename):
+                    if save_chat_to_file(chat_data, f"{st.session_state.chat_name}.json"):
                         st.success("Chat saved!")
-                    else:
-                        st.error("Save failed")
                 else:
                     st.warning("No messages to save")
 
@@ -96,7 +95,6 @@ with st.sidebar:
         st.divider()
 
         # ---------------- SAVED CHATS ----------------
-        # ✅ FIX 2: Prevent sidebar crash
         try:
             saved_chats = get_saved_chats()
             if saved_chats:
@@ -104,55 +102,51 @@ with st.sidebar:
 
                 for chat_file in saved_chats:
                     chat_name = chat_file.replace(".json", "")
-
                     c1, c2 = st.columns([3, 1])
 
                     with c1:
-                        if st.button(
-                            f"📂 {chat_name}",
-                            key=f"load_{chat_file}",
-                            use_container_width=True
-                        ):
-                            loaded_data = load_chat_from_file(chat_file)
-                            if loaded_data:
-                                st.session_state.messages = loaded_data["messages"]
-                                st.session_state.chat_name = loaded_data["chat_name"]
-                                st.success(f"Loaded: {chat_name}")
+                        if st.button(f"📂 {chat_name}", key=f"load_{chat_file}"):
+                            data = load_chat_from_file(chat_file)
+                            if data:
+                                st.session_state.messages = data["messages"]
+                                st.session_state.chat_name = data["chat_name"]
                                 st.rerun()
 
                     with c2:
                         if st.button("🗑️", key=f"del_{chat_file}"):
-                            if delete_saved_chat(chat_file):
-                                st.success("Deleted!")
-                                st.rerun()
+                            delete_saved_chat(chat_file)
+                            st.rerun()
 
         except Exception:
             st.error("Failed to load saved chats")
 
-        st.divider()
+# --------------------------------------------------
+# GLOBAL WARNINGS (NON-BLOCKING)
+# --------------------------------------------------
+if not api_key:
+    st.warning("⚠️ Please add a Gemini API key in Streamlit Secrets or enter one in the sidebar.")
 
 # --------------------------------------------------
 # LOAD DATA + CREATE AGENT
 # --------------------------------------------------
-if api_key and uploaded_file:
-    if "agent" not in st.session_state:
-        with st.spinner("Loading your data..."):
-            data, error = read_file(uploaded_file)
+if api_key and uploaded_file and "agent" not in st.session_state:
+    with st.spinner("Loading your data..."):
+        data, error = read_file(uploaded_file)
+
+        if error:
+            st.error(error)
+        else:
+            db, schema, error = create_sql_database(data)
 
             if error:
-                st.error(f"Error: {error}")
+                st.error(error)
             else:
-                db, schema, error = create_sql_database(data)
+                st.session_state.agent = AnalysisAgent(db, api_key)
+                st.session_state.data = data
+                st.success("✅ Data loaded! Ask me anything about your data.")
 
-                if error:
-                    st.error(f"Database error: {error}")
-                else:
-                    st.session_state.agent = AnalysisAgent(db, api_key)
-                    st.session_state.data = data
-                    st.success("✅ Data loaded! Ask me anything about your data.")
-
-                    with st.expander("📊 Preview Your Data"):
-                        st.dataframe(data.head(10))
+                with st.expander("📊 Preview Your Data"):
+                    st.dataframe(data.head(10))
 
 # --------------------------------------------------
 # DISPLAY CHAT HISTORY
@@ -163,23 +157,8 @@ for i, msg in enumerate(st.session_state.messages):
             st.write(msg["content"])
         else:
             st.markdown(msg.get("analysis", ""))
-
             if msg.get("chart"):
                 st.plotly_chart(msg["chart"], use_container_width=True)
-
-            if msg.get("sql_results"):
-                pdf = generate_pdf_report(
-                    msg.get("question", ""),
-                    msg.get("sql_results", ""),
-                    msg.get("analysis", "")
-                )
-                st.download_button(
-                    label="📥 Download Report",
-                    data=pdf,
-                    file_name=f"report_{i}.pdf",
-                    mime="application/pdf",
-                    key=f"pdf_{i}"
-                )
 
 # --------------------------------------------------
 # CHAT INPUT
@@ -188,44 +167,23 @@ if prompt := st.chat_input("Ask a question about your data..."):
 
     if "agent" not in st.session_state:
         st.warning("⚠️ Please upload a file and enter your API key first!")
-    else:
-        # user message
+        st.stop()
+
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            result = st.session_state.agent.analyze(prompt)
+
         st.session_state.messages.append({
-            "role": "user",
-            "content": prompt
+            "role": "assistant",
+            "question": prompt,
+            "sql_results": result.get("sql_results", ""),
+            "analysis": result.get("analysis", ""),
+            "chart": result.get("chart")
         })
 
-        with st.chat_message("user"):
-            st.write(prompt)
+        st.markdown(result.get("analysis", ""))
 
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                result = st.session_state.agent.analyze(prompt)
-
-            # ✅ FIX 3: SAVE FIRST
-            st.session_state.messages.append({
-                "role": "assistant",
-                "question": prompt,
-                "sql_results": result.get("sql_results", ""),
-                "analysis": result.get("analysis", ""),
-                "chart": result.get("chart")
-            })
-
-            st.markdown(result.get("analysis", ""))
-
-            if result.get("chart"):
-                st.plotly_chart(result["chart"], use_container_width=True)
-
-            if result.get("sql_results"):
-                pdf = generate_pdf_report(
-                    prompt,
-                    result.get("sql_results", ""),
-                    result.get("analysis", "")
-                )
-                st.download_button(
-                    label="📥 Download Report",
-                    data=pdf,
-                    file_name=f"report_{len(st.session_state.messages)}.pdf",
-                    mime="application/pdf",
-                    key="pdf_new"
-                )
+        if result.get("chart"):
+            st.plotly_chart(result["chart"], use_container_width=True)
