@@ -9,7 +9,6 @@ from sqlalchemy import create_engine, inspect
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.utilities import SQLDatabase
 from langchain_core.prompts import PromptTemplate
-from langchain.chains.llm import LLMChain
 
 import plotly.express as px
 
@@ -237,7 +236,9 @@ SQL Query:"""
             input_variables=["schema", "question"],
             template=sql_template
         )
-        self.sql_chain = LLMChain(llm=self.llm, prompt=self.sql_prompt)
+        #self.sql_chain = LLMChain(llm=self.llm, prompt=self.sql_prompt)
+        self.sql_chain = self.sql_prompt | self.llm
+
 
         # Analysis prompt
         analysis_template = """You are a business analyst. Use this data to answer the question.
@@ -259,7 +260,9 @@ Provide your answer in 3 sections:
             input_variables=["question", "sql", "results"],
             template=analysis_template
         )
-        self.analysis_chain = LLMChain(llm=self.llm, prompt=self.analysis_prompt)
+        #self.analysis_chain = LLMChain(llm=self.llm, prompt=self.analysis_prompt)
+        self.analysis_chain = self.analysis_prompt | self.llm
+
 
     def analyze(self, question):
         # get database schema
@@ -269,11 +272,11 @@ Provide your answer in 3 sections:
             schema_text += self.database.get_table_info([table])
 
         # generate SQL query
-        sql_response = self.sql_chain.invoke({
-            "schema": schema_text,
+        raw_sql = self.sql_chain.invoke({
+           "schema": schema_text,
             "question": question
-        })
-        raw_sql = sql_response.get("text", "").strip()
+        }).strip()
+
         sql_query = raw_sql.replace("sql", "").replace("", "").strip()
         if sql_query.startswith("SQL:"):
             sql_query = sql_query[4:].strip()
@@ -298,12 +301,12 @@ Provide your answer in 3 sections:
             chart = create_chart(df, question)
 
         # generate analysis
-        analysis_response = self.analysis_chain.invoke({
-            "question": question,
-            "sql": sql_query,
-            "results": results
+        analysis = self.analysis_chain.invoke({
+             "question": question,
+             "sql": sql_query,
+             "results": results
         })
-        analysis = analysis_response.get("text", "")
+
 
         # save to history
         self.chat_history.append({
