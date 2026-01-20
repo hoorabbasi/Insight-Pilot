@@ -272,10 +272,19 @@ Provide your answer in 3 sections:
             schema_text += self.database.get_table_info([table])
 
         # generate SQL query
-        raw_sql = self.sql_chain.invoke({
-           "schema": schema_text,
-            "question": question
-        }).strip()
+        sql_response = self.sql_chain.invoke({
+          "schema": schema_text,
+          "question": question
+        })
+
+
+        if isinstance(sql_response, dict):
+             raw_sql = sql_response.get("text", "")
+        else:
+             raw_sql = str(sql_response)
+
+        raw_sql = raw_sql.strip()
+
 
         sql_query = raw_sql.replace("sql", "").replace("", "").strip()
         if sql_query.startswith("SQL:"):
@@ -301,11 +310,19 @@ Provide your answer in 3 sections:
             chart = create_chart(df, question)
 
         # generate analysis
-        analysis = self.analysis_chain.invoke({
-             "question": question,
-             "sql": sql_query,
-             "results": results
+        analysis_response = self.analysis_chain.invoke({
+          "question": question,
+          "sql": sql_query,
+          "results": results
         })
+
+        if isinstance(analysis_response, dict):
+            analysis_text = analysis_response.get("text", "")
+        else:
+            analysis_text = str(analysis_response)
+
+        analysis_text = analysis_text.strip()
+
 
 
         # save to history
