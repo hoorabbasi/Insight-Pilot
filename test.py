@@ -6,16 +6,18 @@ import re
 from datetime import datetime
 
 from sqlalchemy import create_engine, inspect
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.utilities import SQLDatabase
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
+from langchain_core.prompts import PromptTemplate
+from langchain.chains.llm import LLMChain
 
 import plotly.express as px
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
+
 
 
 # =========================
