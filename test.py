@@ -265,80 +265,95 @@ Provide your answer in 3 sections:
 
 
     def analyze(self, question):
-        # get database schema
-        schema_text = ""
-        tables = self.database.get_usable_table_names()
-        for table in tables:
-            schema_text += self.database.get_table_info([table])
+    # =========================
+    # GET DATABASE SCHEMA
+    # =========================
+    schema_text = ""
+    tables = self.database.get_usable_table_names()
+    for table in tables:
+        schema_text += self.database.get_table_info([table])
 
-        # generate SQL query
-        sql_response = self.sql_chain.invoke({
-          "schema": schema_text,
-          "question": question
-        })
+    # =========================
+    # GENERATE SQL QUERY
+    # =========================
+    sql_response = self.sql_chain.invoke({
+        "schema": schema_text,
+        "question": question
+    })
 
+    # LangChain-safe text extraction
+    if isinstance(sql_response, dict):
+        raw_sql = sql_response.get("text", "")
+    else:
+        raw_sql = str(sql_response)
 
-        if isinstance(sql_response, dict):
-             raw_sql = sql_response.get("text", "")
-        else:
-             raw_sql = str(sql_response)
+    raw_sql = raw_sql.strip()
 
-        raw_sql = raw_sql.strip()
+    # Clean SQL
+    sql_query = raw_sql.replace("sql", "").strip()
+    if sql_query.startswith("SQL:"):
+        sql_query = sql_query[4:].strip()
+    if not sql_query.endswith(";"):
+        sql_query += ";"
 
-
-        sql_query = raw_sql.replace("sql", "").replace("", "").strip()
-        if sql_query.startswith("SQL:"):
-            sql_query = sql_query[4:].strip()
-        if not sql_query.endswith(";"):
-            sql_query += ";"
-
-        # run the query
-        try:
-            results = self.database.run(sql_query)
-        except Exception as e:
-            return {
-                "status": "error",
-                "analysis": f"Error running query: {e}",
-                "chart": None,
-                "sql_results": None
-            }
-
-        # create chart if needed
-        chart = None
-        df = sql_result_to_dataframe(results)
-        if df is not None and should_visualize(question):
-            chart = create_chart(df, question)
-
-        # generate analysis
-        analysis_response = self.analysis_chain.invoke({
-          "question": question,
-          "sql": sql_query,
-          "results": results
-        })
-
-        if isinstance(analysis_response, dict):
-            analysis_text = analysis_response.get("text", "")
-        else:
-            analysis_text = str(analysis_response)
-
-        analysis_text = analysis_text.strip()
-
-
-
-        # save to history
-        self.chat_history.append({
-            "question": question,
-            "result": results,
-            "analysis": analysis,
-            "timestamp": datetime.now().strftime("%I:%M %p")
-        })
-
+    # =========================
+    # RUN SQL QUERY
+    # =========================
+    try:
+        results = self.database.run(sql_query)
+    except Exception as e:
         return {
-            "sql_results": results,
-            "analysis": analysis,
-            "chart": chart,
-            "status": "success"
+            "status": "error",
+            "analysis": f"Error running query: {e}",
+            "chart": None,
+            "sql_results": None
         }
+
+    # =========================
+    # CREATE CHART (IF NEEDED)
+    # =========================
+    chart = None
+    df = sql_result_to_dataframe(results)
+    if df is not None and should_visualize(question):
+        chart = create_chart(df, question)
+
+    # =========================
+    # GENERATE ANALYSIS
+    # =========================
+    analysis_response = self.analysis_chain.invoke({
+        "question": question,
+        "sql": sql_query,
+        "results": results
+    })
+
+    # LangChain-safe text extraction
+    if isinstance(analysis_response, dict):
+        analysis_text = analysis_response.get("text", "")
+    else:
+        analysis_text = str(analysis_response)
+
+    analysis_text = analysis_text.strip()
+
+    # =========================
+    # SAVE CHAT HISTORY
+    # =========================
+    self.chat_history.append({
+        "question": question,
+        "result": results,
+        "analysis": analysis_text,
+        "timestamp": datetime.now().strftime("%I:%M %p")
+    })
+
+    # =========================
+    # RETURN RESPONSE
+    # =========================
+    return {
+        "sql_results": results,
+        "analysis": analysis_text,
+        "chart": chart,
+        "status": "success"
+    }
+
 
     def get_chat_history(self):
         return self.chat_history
