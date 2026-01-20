@@ -10,7 +10,6 @@ from sqlalchemy import create_engine, inspect
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.utilities import SQLDatabase
 from langchain_core.prompts import PromptTemplate
-from langchain.chains.llm import LLMChain
 
 import plotly.express as px
 
@@ -19,10 +18,9 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 
 
-
-# =========================
+# --------------------------------------------------
 # VISUALIZATION DETECTION
-# =========================
+# --------------------------------------------------
 def should_visualize(question):
     keywords = [
         "chart", "graph", "plot", "visualize", "trend", "compare",
@@ -32,9 +30,9 @@ def should_visualize(question):
     return any(word in question.lower() for word in keywords)
 
 
-# =========================
+# --------------------------------------------------
 # SQL RESULT → DATAFRAME
-# =========================
+# --------------------------------------------------
 def sql_result_to_dataframe(results):
     if not results:
         return None
@@ -53,9 +51,9 @@ def sql_result_to_dataframe(results):
     return None
 
 
-# =========================
+# --------------------------------------------------
 # CHART CREATION
-# =========================
+# --------------------------------------------------
 def create_chart(df, question):
     q = question.lower()
 
@@ -71,9 +69,9 @@ def create_chart(df, question):
     return px.bar(df, x="label", y="value", title="Comparison")
 
 
-# =========================
-# FILE HANDLING
-# =========================
+# --------------------------------------------------
+# FILE READING
+# --------------------------------------------------
 def read_file(uploaded_file):
     try:
         if uploaded_file.name.endswith(".csv"):
@@ -85,6 +83,9 @@ def read_file(uploaded_file):
         return None, str(e)
 
 
+# --------------------------------------------------
+# SQL DATABASE
+# --------------------------------------------------
 def create_sql_database(data, table_name="business_data"):
     try:
         engine = create_engine("sqlite:///temp_business_data.db")
@@ -99,9 +100,9 @@ def create_sql_database(data, table_name="business_data"):
         return None, None, str(e)
 
 
-# =========================
+# --------------------------------------------------
 # CHAT STORAGE
-# =========================
+# --------------------------------------------------
 def save_chat_to_file(chat_data, filename):
     os.makedirs("saved_chats", exist_ok=True)
 
@@ -144,9 +145,9 @@ def delete_saved_chat(filename):
     return False
 
 
-# =========================
-# AI ANALYSIS AGENT
-# =========================
+# --------------------------------------------------
+# AI ANALYSIS AGENT (CLOUD SAFE)
+# --------------------------------------------------
 class AnalysisAgent:
     def __init__(self, database, api_key):
         self.database = database
@@ -157,14 +158,16 @@ class AnalysisAgent:
             temperature=0
         )
 
-        sql_prompt = """You are an AI Data Analyst connected to a SQL database.
+        self.sql_prompt = PromptTemplate(
+            input_variables=["schema", "question"],
+            template="""
+You are an AI Data Analyst connected to a SQL database.
 
 RULES:
-- ONLY valid SQLite SELECT
+- Output ONE SQLite SELECT query
 - NO markdown
 - NO explanations
-- Use schema strictly
-- Use aliases: label, value
+- NO semicolons
 
 Schema:
 {schema}
@@ -174,16 +177,12 @@ Question:
 
 SQL:
 """
-
-        self.sql_chain = LLMChain(
-            llm=self.llm,
-            prompt=PromptTemplate(
-                input_variables=["schema", "question"],
-                template=sql_prompt
-            )
         )
 
-        analysis_prompt = """You are a business analyst.
+        self.analysis_prompt = PromptTemplate(
+            input_variables=["question", "summary"],
+            template="""
+You are a business analyst.
 
 Data:
 {summary}
@@ -191,38 +190,30 @@ Data:
 Question:
 {question}
 
-Respond in:
+Respond in 3 sections:
 1. What I Found
 2. Why It Matters
 3. Recommendations
 """
-
-        self.analysis_chain = LLMChain(
-            llm=self.llm,
-            prompt=PromptTemplate(
-                input_variables=["question", "summary"],
-                template=analysis_prompt
-            )
         )
 
+        # ✅ New LangChain Runnable syntax
+        self.sql_chain = self.sql_prompt | self.llm
+        self.analysis_chain = self.analysis_prompt | self.llm
+
     def analyze(self, question):
-        # Build schema text
+        # Build schema
         schema_text = ""
         for table in self.database.get_usable_table_names():
             schema_text += self.database.get_table_info([table])
 
-        # Generate SQL safely
-        sql_response = self.sql_chain.invoke({
+        # Generate SQL
+        raw_sql = self.sql_chain.invoke({
             "schema": schema_text,
             "question": question
         })
 
-        if isinstance(sql_response, dict):
-            raw_sql = sql_response.get("text", "")
-        else:
-            raw_sql = str(sql_response)
-
-        raw_sql = raw_sql.strip()
+        raw_sql = str(raw_sql).strip()
 
         match = re.search(r"(SELECT\s+.*)", raw_sql, re.IGNORECASE | re.DOTALL)
         if not match:
@@ -235,6 +226,7 @@ Respond in:
 
         sql_query = match.group(1).split(";")[0].strip()
 
+        # Execute SQL
         try:
             results = self.database.run(sql_query)
         except Exception as e:
@@ -245,34 +237,29 @@ Respond in:
                 "sql_results": None
             }
 
+        # Visualization
         df = sql_result_to_dataframe(results)
         chart = create_chart(df, question) if df is not None and should_visualize(question) else None
 
         summary = df.to_string(index=False) if df is not None else str(results)
 
-        analysis_response = self.analysis_chain.invoke({
+        # Analysis
+        analysis = self.analysis_chain.invoke({
             "question": question,
             "summary": summary
         })
 
-        if isinstance(analysis_response, dict):
-            analysis_text = analysis_response.get("text", "")
-        else:
-            analysis_text = str(analysis_response)
-
-        analysis_text = analysis_text.strip()
-
         return {
             "status": "success",
             "sql_results": results,
-            "analysis": analysis_text,
+            "analysis": str(analysis),
             "chart": chart
         }
 
 
-# =========================
+# --------------------------------------------------
 # PDF REPORT
-# =========================
+# --------------------------------------------------
 def generate_pdf_report(question, sql_results, analysis):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
