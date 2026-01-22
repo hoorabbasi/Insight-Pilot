@@ -202,59 +202,97 @@ Respond in 3 sections:
         self.analysis_chain = self.analysis_prompt | self.llm
 
     def analyze(self, question):
-        # Build schema
-        schema_text = ""
-        for table in self.database.get_usable_table_names():
-            schema_text += self.database.get_table_info([table])
+    # --------------------------------------------------
+    # BUILD SCHEMA
+    # --------------------------------------------------
+    schema_text = ""
+    for table in self.database.get_usable_table_names():
+        schema_text += self.database.get_table_info([table])
 
-        # Generate SQL
-        raw_sql = self.sql_chain.invoke({
-            "schema": schema_text,
-            "question": question
-        })
+    # --------------------------------------------------
+    # GENERATE SQL (CLOUD SAFE)
+    # --------------------------------------------------
+    response = self.sql_chain.invoke({
+        "schema": schema_text,
+        "question": question
+    })
 
-        raw_sql = str(raw_sql).strip()
+    # ✅ STRICTLY extract text from Gemini response
+    if hasattr(response, "content"):
+        raw_sql = response.content
+    else:
+        raw_sql = str(response)
 
-        match = re.search(r"(SELECT\s+.*)", raw_sql, re.IGNORECASE | re.DOTALL)
-        if not match:
-            return {
-                "status": "error",
-                "analysis": f"SQL generation failed:\n{raw_sql}",
-                "chart": None,
-                "sql_results": None
-            }
+    raw_sql = raw_sql.strip()
 
-        sql_query = match.group(1).split(";")[0].strip()
+    # --------------------------------------------------
+    # HARD CLEANUP (REMOVE GEMINI METADATA)
+    # --------------------------------------------------
+    raw_sql = raw_sql.split("\n")[0]
+    raw_sql = raw_sql.split("additional_kwargs")[0]
+    raw_sql = raw_sql.split("response_metadata")[0]
+    raw_sql = raw_sql.split("'")[0]
+    raw_sql = raw_sql.strip()
 
-        # Execute SQL
-        try:
-            results = self.database.run(sql_query)
-        except Exception as e:
-            return {
-                "status": "error",
-                "analysis": f"SQL Execution Error: {e}",
-                "chart": None,
-                "sql_results": None
-            }
-
-        # Visualization
-        df = sql_result_to_dataframe(results)
-        chart = create_chart(df, question) if df is not None and should_visualize(question) else None
-
-        summary = df.to_string(index=False) if df is not None else str(results)
-
-        # Analysis
-        analysis = self.analysis_chain.invoke({
-            "question": question,
-            "summary": summary
-        })
-
+    # --------------------------------------------------
+    # VALIDATE SQL
+    # --------------------------------------------------
+    match = re.search(r"(SELECT\s.+)", raw_sql, re.IGNORECASE)
+    if not match:
         return {
-            "status": "success",
-            "sql_results": results,
-            "analysis": str(analysis),
-            "chart": chart
+            "status": "error",
+            "analysis": f"Invalid SQL generated:\n{raw_sql}",
+            "chart": None,
+            "sql_results": None
         }
+
+    sql_query = match.group(1).strip()
+
+    # --------------------------------------------------
+    # EXECUTE SQL
+    # --------------------------------------------------
+    try:
+        results = self.database.run(sql_query)
+    except Exception as e:
+        return {
+            "status": "error",
+            "analysis": f"SQL Execution Error: {e}",
+            "chart": None,
+            "sql_results": None
+        }
+
+    # --------------------------------------------------
+    # VISUALIZATION
+    # --------------------------------------------------
+    df = sql_result_to_dataframe(results)
+    chart = (
+        create_chart(df, question)
+        if df is not None and should_visualize(question)
+        else None
+    )
+
+    summary = df.to_string(index=False) if df is not None else str(results)
+
+    # --------------------------------------------------
+    # ANALYSIS
+    # --------------------------------------------------
+    analysis_response = self.analysis_chain.invoke({
+        "question": question,
+        "summary": summary
+    })
+
+    analysis_text = (
+        analysis_response.content
+        if hasattr(analysis_response, "content")
+        else str(analysis_response)
+    )
+
+    return {
+        "status": "success",
+        "sql_results": results,
+        "analysis": analysis_text,
+        "chart": chart
+    }
 
 
 # --------------------------------------------------
