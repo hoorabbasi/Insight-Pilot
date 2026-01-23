@@ -249,14 +249,18 @@ if "messages" not in st.session_state:
 if "chat_name" not in st.session_state:
     st.session_state.chat_name = f"Chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
+# Initialize API key in session state
+if "api_key" not in st.session_state:
+    st.session_state.api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
+
 # --------------------------------------------------
 # SIDEBAR
 # --------------------------------------------------
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
     
-    # API Key - Load silently from secrets (no UI element)
-    api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
+    # Get API key from session state
+    api_key = st.session_state.api_key
     
     if not api_key:
         st.error("⚠️ API Key not configured. Please contact administrator.")
