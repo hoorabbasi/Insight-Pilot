@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy import create_engine, inspect
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.utilities import SQLDatabase
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate  # UPDATED IMPORT
 from langchain.chains import LLMChain
 
 import plotly.express as px
@@ -139,7 +139,7 @@ class AnalysisAgent:
         self.database = database
 
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash-exp",
             google_api_key=api_key,
             temperature=0
         )
