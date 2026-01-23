@@ -8,8 +8,6 @@ from datetime import datetime
 from sqlalchemy import create_engine, inspect
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.utilities import SQLDatabase
-from langchain_core.prompts import PromptTemplate  # UPDATED IMPORT
-from langchain.chains import LLMChain
 
 import plotly.express as px
 
@@ -132,20 +130,26 @@ def delete_saved_chat(filename):
     return False
 
 
-# AI agent
+# AI agent - UPDATED WITHOUT LLMChain
 
 class AnalysisAgent:
     def __init__(self, database, api_key):
         self.database = database
 
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
+            model="gemini-1.5-flash",
             google_api_key=api_key,
             temperature=0
         )
 
-        
-        sql_prompt = """You are an AI Data Analyst connected to a SQL database.
+    def analyze(self, question):
+        # Build schema
+        schema_text = ""
+        for table in self.database.get_usable_table_names():
+            schema_text += self.database.get_table_info([table])
+
+        # SQL Generation Prompt
+        sql_prompt = f"""You are an AI Data Analyst connected to a SQL database.
 
 STRICT RULES:
 1. You MUST always check the database schema.
@@ -177,7 +181,7 @@ OUTPUT RULES:
 - NO semicolons
 
 Database schema:
-{schema}
+{schema_text}
 
 Question:
 {question}
@@ -185,46 +189,16 @@ Question:
 SQL Query:
 """
 
-        self.sql_chain = LLMChain(
-            llm=self.llm,
-            prompt=PromptTemplate(
-                input_variables=["schema", "question"],
-                template=sql_prompt
-            )
-        )
-
-        analysis_prompt = """You are a business analyst.
-
-Data:
-{summary}
-
-Question:
-{question}
-
-Respond in 3 sections:
-1. What I Found
-2. Why It Matters
-3. Recommendations
-"""
-
-        self.analysis_chain = LLMChain(
-            llm=self.llm,
-            prompt=PromptTemplate(
-                input_variables=["question", "summary"],
-                template=analysis_prompt
-            )
-        )
-
-    def analyze(self, question):
-        # Build schema
-        schema_text = ""
-        for table in self.database.get_usable_table_names():
-            schema_text += self.database.get_table_info([table])
-
-        raw_sql = self.sql_chain.invoke({
-            "schema": schema_text,
-            "question": question
-        })["text"]
+        # Generate SQL using direct LLM invoke
+        try:
+            raw_sql = self.llm.invoke(sql_prompt).content
+        except Exception as e:
+            return {
+                "status": "error",
+                "analysis": f"SQL generation failed: {e}",
+                "chart": None,
+                "sql_results": None
+            }
 
         #SQL SANITIZATION
         match = re.search(r"(SELECT\s+.*)", raw_sql, re.IGNORECASE | re.DOTALL)
@@ -254,10 +228,26 @@ Respond in 3 sections:
 
         summary = df.to_string(index=False) if df is not None else str(results)
 
-        analysis = self.analysis_chain.invoke({
-            "question": question,
-            "summary": summary
-        })["text"]
+        # Analysis Generation Prompt
+        analysis_prompt = f"""You are a business analyst.
+
+Data:
+{summary}
+
+Question:
+{question}
+
+Respond in 3 sections:
+1. What I Found
+2. Why It Matters
+3. Recommendations
+"""
+
+        # Generate analysis using direct LLM invoke
+        try:
+            analysis = self.llm.invoke(analysis_prompt).content
+        except Exception as e:
+            analysis = f"Analysis generation failed: {e}"
 
         return {
             "status": "success",
