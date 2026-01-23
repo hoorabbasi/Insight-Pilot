@@ -255,18 +255,16 @@ if "chat_name" not in st.session_state:
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
     
-    # API Key Section
+    # API Key Section - Auto-load from secrets
     with st.container():
-        env_api_key = os.getenv("GEMINI_API_KEY")
+        env_api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
         
         if env_api_key:
             api_key = env_api_key
-            st.success("✅ API Key loaded from environment")
+            # Don't show any message, just silently use the key
         else:
-            st.markdown("**🔑 API Authentication**")
-            api_key = st.text_input("Enter Gemini API Key", type="password", placeholder="Enter your API key...")
-            if api_key:
-                st.info("💡 Tip: Save your key in app secrets for auto-loading")
+            st.error("⚠️ API Key not configured. Please contact administrator.")
+            api_key = None
 
     st.divider()
 
@@ -366,8 +364,8 @@ with st.sidebar:
 # MAIN CONTENT AREA
 # --------------------------------------------------
 
-# Welcome Section (shown when no data loaded)
-if "agent" not in st.session_state:
+    # Welcome Section (shown when no data loaded)
+if "agent" not in st.session_state and not uploaded_file:
     st.markdown("""
     <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                 padding: 2rem; 
@@ -422,13 +420,12 @@ if "agent" not in st.session_state:
         st.markdown("""
         **Follow these simple steps:**
         
-        1. **🔑 Setup API Key** - Enter your Gemini API key in the sidebar (or set it in app secrets)
-        2. **📁 Upload Data** - Upload your CSV or Excel file containing business data
-        3. **💬 Start Chatting** - Ask questions like:
+        1. **📁 Upload Data** - Upload your CSV or Excel file containing business data
+        2. **💬 Start Chatting** - Ask questions like:
            - "What were the top 5 products by sales?"
            - "Show me monthly revenue trends"
            - "Which customers spent the most?"
-        4. **📥 Download Reports** - Export your insights as PDF reports
+        3. **📥 Download Reports** - Export your insights as PDF reports
         
         **Supported File Formats:** CSV, XLSX, XLS
         """)
@@ -494,7 +491,7 @@ else:
 if prompt := st.chat_input("💬 Ask a question about your data... (e.g., 'What are the top 5 products by revenue?')"):
 
     if "agent" not in st.session_state:
-        st.warning("⚠️ Please upload a file and enter your API key first!")
+        st.warning("⚠️ Please upload a data file to get started!")
     else:
         # User message
         st.session_state.messages.append({
