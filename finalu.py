@@ -255,30 +255,22 @@ if "chat_name" not in st.session_state:
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
     
-    # API Key Section - Auto-load from secrets
-    with st.container():
-        env_api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
-        
-        if env_api_key:
-            api_key = env_api_key
-            # Don't show any message, just silently use the key
-        else:
-            st.error("⚠️ API Key not configured. Please contact administrator.")
-            api_key = None
-
-    st.divider()
-
+    # API Key - Load silently from secrets (no UI element)
+    api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
+    
+    if not api_key:
+        st.error("⚠️ API Key not configured. Please contact administrator.")
+    
     # File Upload Section
-    with st.container():
-        st.markdown("**📁 Data Upload**")
-        uploaded_file = st.file_uploader(
-            "Upload your business data",
-            type=["csv", "xlsx", "xls"],
-            help="Supported formats: CSV, Excel (XLSX, XLS)"
-        )
-        
-        if uploaded_file:
-            st.success(f"✅ {uploaded_file.name}")
+    st.markdown("**📁 Data Upload**")
+    uploaded_file = st.file_uploader(
+        "Upload your business data",
+        type=["csv", "xlsx", "xls"],
+        help="Supported formats: CSV, Excel (XLSX, XLS)"
+    )
+    
+    if uploaded_file:
+        st.success(f"✅ {uploaded_file.name}")
 
     st.divider()
 
