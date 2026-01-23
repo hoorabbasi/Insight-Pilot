@@ -249,9 +249,26 @@ if "messages" not in st.session_state:
 if "chat_name" not in st.session_state:
     st.session_state.chat_name = f"Chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-# Initialize API key in session state
+# Initialize API key in session state - check multiple sources
 if "api_key" not in st.session_state:
-    st.session_state.api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
+    # Try multiple ways to get the API key
+    api_key = None
+    
+    # Method 1: Environment variable
+    if os.getenv("GEMINI_API_KEY"):
+        api_key = os.getenv("GEMINI_API_KEY")
+    
+    # Method 2: Streamlit secrets
+    try:
+        if "GEMINI_API_KEY" in st.secrets:
+            api_key = st.secrets["GEMINI_API_KEY"]
+    except:
+        pass
+    
+    st.session_state.api_key = api_key
+
+if "api_key_input" not in st.session_state:
+    st.session_state.api_key_input = ""
 
 # --------------------------------------------------
 # SIDEBAR
@@ -259,11 +276,38 @@ if "api_key" not in st.session_state:
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
     
-    # Get API key from session state
-    api_key = st.session_state.api_key
+    # API Key Section - Either from secrets or user input
+    if st.session_state.api_key:
+        # Key loaded from secrets
+        api_key = st.session_state.api_key
+        st.success("✅ API Key Active")
+        # Debug info (remove after confirming it works)
+        with st.expander("🔍 Debug Info"):
+            st.write(f"Key length: {len(api_key)} characters")
+            st.write(f"Key starts with: {api_key[:10]}...")
+    else:
+        # Allow manual entry
+        st.markdown("**🔑 API Key**")
+        user_api_key = st.text_input(
+            "Enter Gemini API Key", 
+            type="password",
+            value=st.session_state.api_key_input,
+            key="api_input_field",
+            placeholder="Enter your API key..."
+        )
+        
+        if st.button("💾 Save API Key", use_container_width=True):
+            if user_api_key:
+                st.session_state.api_key = user_api_key
+                st.session_state.api_key_input = user_api_key
+                st.success("✅ API Key Saved!")
+                st.rerun()
+            else:
+                st.warning("⚠️ Please enter an API key")
+        
+        api_key = st.session_state.api_key
     
-    if not api_key:
-        st.error("⚠️ API Key not configured. Please contact administrator.")
+    st.divider()
     
     # File Upload Section
     st.markdown("**📁 Data Upload**")
