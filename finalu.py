@@ -276,17 +276,12 @@ if "api_key_input" not in st.session_state:
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
     
-    # API Key Section - Either from secrets or user input
-    if st.session_state.api_key:
-        # Key loaded from secrets
-        api_key = st.session_state.api_key
-        st.success("✅ API Key Active")
-        # Debug info (remove after confirming it works)
-        with st.expander("🔍 Debug Info"):
-            st.write(f"Key length: {len(api_key)} characters")
-            st.write(f"Key starts with: {api_key[:10]}...")
-    else:
-        # Allow manual entry
+    # Get API key from session state
+    api_key = st.session_state.api_key
+    
+    # Only show input if no key is configured
+    if not api_key:
+        st.warning("⚠️ API Key Required")
         st.markdown("**🔑 API Key**")
         user_api_key = st.text_input(
             "Enter Gemini API Key", 
@@ -304,8 +299,6 @@ with st.sidebar:
                 st.rerun()
             else:
                 st.warning("⚠️ Please enter an API key")
-        
-        api_key = st.session_state.api_key
     
     st.divider()
     
