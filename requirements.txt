@@ -15,15 +15,13 @@ plotly==5.18.0
 # UI
 streamlit==1.29.0
 
-# LLM / Agent - Pinned to exact working versions
-langchain==0.0.340
-langchain-google-genai==0.0.6
-langchain-community==0.0.10
-langchain-core==0.0.13
+# LLM / Agent - Using the oldest stable versions with legacy imports
+langchain==0.0.267
+langchain-google-genai==0.0.5
 
 # PDF Reports
 reportlab==4.0.7
 
 # Additional dependencies
-google-generativeai==0.3.1
-pydantic==1.10.13
+google-generativeai==0.2.2
+pydantic==1.10.12
