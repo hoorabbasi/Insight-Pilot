@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 
-from finalb import (
+from test import (
     read_file,
     create_sql_database,
     AnalysisAgent,
