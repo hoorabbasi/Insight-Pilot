@@ -11,9 +11,12 @@ from langchain_community.utilities import SQLDatabase
 
 import plotly.express as px
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
 
 
 #chart visualization detection
@@ -258,22 +261,189 @@ Respond in 3 sections:
         }
 
 
-#pdf report 
+# IMPROVED PDF REPORT GENERATION
 def generate_pdf_report(question, sql_results, analysis):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=72,
+        bottomMargin=72
+    )
+    
+    # Custom styles
     styles = getSampleStyleSheet()
-
-    story = [
-        Paragraph("Business Data Analysis Report", styles["Heading1"]),
-        Spacer(1, 12),
-        Paragraph(f"<b>Question:</b> {question}", styles["BodyText"]),
-        Spacer(1, 12),
-        Paragraph(f"<b>Results:</b><br/>{sql_results}", styles["BodyText"]),
-        Spacer(1, 12),
-        Paragraph(f"<b>Analysis:</b><br/>{analysis}", styles["BodyText"])
-    ]
-
+    
+    # Title style
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#667eea'),
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    # Subtitle style
+    subtitle_style = ParagraphStyle(
+        'Subtitle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.grey,
+        spaceAfter=20,
+        alignment=TA_CENTER,
+        fontName='Helvetica'
+    )
+    
+    # Section heading style
+    section_heading_style = ParagraphStyle(
+        'SectionHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#667eea'),
+        spaceAfter=12,
+        spaceBefore=20,
+        fontName='Helvetica-Bold',
+        borderPadding=10,
+        backColor=colors.HexColor('#f8fafc'),
+        borderColor=colors.HexColor('#e2e8f0'),
+        borderWidth=1,
+        borderRadius=5
+    )
+    
+    # Body style
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['BodyText'],
+        fontSize=11,
+        alignment=TA_JUSTIFY,
+        spaceAfter=12,
+        leading=16,
+        fontName='Helvetica'
+    )
+    
+    # Build content
+    story = []
+    
+    # Header
+    story.append(Paragraph("Business Data Analysis Report", title_style))
+    story.append(Paragraph(f"Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", subtitle_style))
+    story.append(Spacer(1, 0.3 * inch))
+    
+    # Question Section
+    story.append(Paragraph("Question", section_heading_style))
+    story.append(Spacer(1, 0.1 * inch))
+    story.append(Paragraph(question, body_style))
+    story.append(Spacer(1, 0.2 * inch))
+    
+    # Results Section
+    story.append(Paragraph("Query Results", section_heading_style))
+    story.append(Spacer(1, 0.1 * inch))
+    
+    # Parse and format results into a table
+    results_text = str(sql_results)
+    try:
+        # Try to create a nice table from results
+        if '[(' in results_text:
+            # Parse tuples
+            rows = eval(results_text)
+            if rows:
+                # Create table data
+                table_data = [['Region/Category', 'Value']]
+                for row in rows:
+                    table_data.append([str(row[0]), str(row[1])])
+                
+                # Create table
+                t = Table(table_data, colWidths=[3*inch, 2*inch])
+                t.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#667eea')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e2e8f0')),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 10),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+                ]))
+                story.append(t)
+        else:
+            story.append(Paragraph(results_text, body_style))
+    except:
+        story.append(Paragraph(results_text, body_style))
+    
+    story.append(Spacer(1, 0.3 * inch))
+    
+    # Analysis Section
+    story.append(Paragraph("Detailed Analysis", section_heading_style))
+    story.append(Spacer(1, 0.1 * inch))
+    
+    # Parse and format analysis sections
+    analysis_sections = analysis.split('\n\n')
+    for section in analysis_sections:
+        if section.strip():
+            # Check if it's a numbered section (1., 2., 3.)
+            if re.match(r'^\d+\.', section.strip()):
+                # Split into heading and content
+                parts = section.split('\n', 1)
+                if len(parts) == 2:
+                    heading, content = parts
+                    # Make heading bold and colored
+                    heading_style = ParagraphStyle(
+                        'AnalysisHeading',
+                        parent=body_style,
+                        fontSize=12,
+                        textColor=colors.HexColor('#667eea'),
+                        fontName='Helvetica-Bold',
+                        spaceAfter=8,
+                        spaceBefore=12
+                    )
+                    story.append(Paragraph(heading, heading_style))
+                    
+                    # Format bullet points
+                    lines = content.split('\n')
+                    for line in lines:
+                        if line.strip():
+                            if line.strip().startswith('*'):
+                                # Bullet point
+                                bullet_style = ParagraphStyle(
+                                    'Bullet',
+                                    parent=body_style,
+                                    leftIndent=20,
+                                    bulletIndent=10,
+                                    spaceAfter=6
+                                )
+                                story.append(Paragraph(line.strip(), bullet_style))
+                            else:
+                                # Regular text
+                                story.append(Paragraph(line.strip(), body_style))
+                else:
+                    story.append(Paragraph(section, body_style))
+            else:
+                story.append(Paragraph(section, body_style))
+    
+    story.append(Spacer(1, 0.3 * inch))
+    
+    # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.grey,
+        alignment=TA_CENTER,
+        fontName='Helvetica'
+    )
+    story.append(Spacer(1, 0.5 * inch))
+    story.append(Paragraph("─" * 80, footer_style))
+    story.append(Spacer(1, 0.1 * inch))
+    story.append(Paragraph("Generated by Insight Pilot | AI-Powered Business Analytics", footer_style))
+    
+    # Build PDF
     doc.build(story)
     buffer.seek(0)
     return buffer
