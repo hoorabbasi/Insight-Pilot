@@ -227,39 +227,61 @@ SQL Query:
         df = sql_result_to_dataframe(results)
         chart = create_chart(df, question) if df is not None and should_visualize(question) else None
 
-        # Format results properly for analysis
+        # Format results CLEARLY for analysis - THIS IS THE KEY FIX
         results_str = str(results)
         
-        # Parse results into readable format
-        formatted_summary = "Query Results:\n"
+        # Create a very clear, unambiguous summary
+        formatted_summary = ""
+        
         if '[(' in results_str:
             try:
                 parsed_results = eval(results_str)
-                formatted_summary += f"Total rows returned: {len(parsed_results)}\n\n"
-                formatted_summary += "Data:\n"
+                row_count = len(parsed_results)
+                
+                formatted_summary = f"""
+DATABASE QUERY RESULTS:
+======================
+Total number of records found: {row_count}
+
+Complete list of ALL {row_count} records:
+"""
                 for idx, row in enumerate(parsed_results, 1):
-                    formatted_summary += f"{idx}. {row[0]}: {row[1]}\n"
-            except:
-                formatted_summary = results_str
+                    if len(row) >= 2:
+                        formatted_summary += f"\nRecord {idx}: {row[0]} = {row[1]}"
+                    else:
+                        formatted_summary += f"\nRecord {idx}: {row}"
+                
+                formatted_summary += f"\n\nIMPORTANT: You must analyze ALL {row_count} records listed above."
+                
+            except Exception as e:
+                formatted_summary = f"Query returned data:\n{results_str}"
         else:
-            formatted_summary = results_str
+            formatted_summary = f"Query results:\n{results_str}"
 
-        # Analysis Generation Prompt
-        analysis_prompt = f"""You are a business analyst.
-
-IMPORTANT: The data shows MULTIPLE rows. Analyze ALL the data provided, not just the first row.
+        # Analysis Generation Prompt - VERY EXPLICIT
+        analysis_prompt = f"""You are a business analyst reviewing database query results.
 
 {formatted_summary}
 
-Original Question:
-{question}
+Original question: {question}
 
-Respond in 3 sections:
-1. What I Found - Describe ALL the results, mention how many items/customers/products were found
-2. Why It Matters - Business implications
-3. Recommendations - Actionable next steps
+CRITICAL INSTRUCTION: The data above shows MULTIPLE records. You MUST count and analyze ALL records shown above. Do not say "only 1 record" when there are clearly multiple records listed.
 
-Be accurate: if the data shows 5 customers, say 5 customers, not 1 customer.
+Provide your analysis in 3 sections:
+
+1. What I Found
+   - State the EXACT number of records found (as shown in "Total number of records found")
+   - List ALL items with their values
+   - Identify top performers
+
+2. Why It Matters
+   - Business implications of these findings
+   - Key patterns or trends
+
+3. Recommendations
+   - Actionable next steps based on the data
+
+Begin your analysis now:
 """
 
         # Generate analysis using direct LLM invoke
