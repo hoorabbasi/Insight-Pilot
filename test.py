@@ -273,10 +273,10 @@ def generate_pdf_report(question, sql_results, analysis):
         bottomMargin=72
     )
     
-    # Custom styles
+    # Get styles
     styles = getSampleStyleSheet()
     
-    # Title style
+    # Custom styles - simplified without unsupported properties
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -287,18 +287,15 @@ def generate_pdf_report(question, sql_results, analysis):
         fontName='Helvetica-Bold'
     )
     
-    # Subtitle style
     subtitle_style = ParagraphStyle(
         'Subtitle',
         parent=styles['Normal'],
         fontSize=10,
         textColor=colors.grey,
         spaceAfter=20,
-        alignment=TA_CENTER,
-        fontName='Helvetica'
+        alignment=TA_CENTER
     )
     
-    # Section heading style
     section_heading_style = ParagraphStyle(
         'SectionHeading',
         parent=styles['Heading2'],
@@ -306,23 +303,15 @@ def generate_pdf_report(question, sql_results, analysis):
         textColor=colors.HexColor('#667eea'),
         spaceAfter=12,
         spaceBefore=20,
-        fontName='Helvetica-Bold',
-        borderPadding=10,
-        backColor=colors.HexColor('#f8fafc'),
-        borderColor=colors.HexColor('#e2e8f0'),
-        borderWidth=1,
-        borderRadius=5
+        fontName='Helvetica-Bold'
     )
     
-    # Body style
     body_style = ParagraphStyle(
         'CustomBody',
         parent=styles['BodyText'],
         fontSize=11,
-        alignment=TA_JUSTIFY,
         spaceAfter=12,
-        leading=16,
-        fontName='Helvetica'
+        leading=16
     )
     
     # Build content
@@ -334,13 +323,13 @@ def generate_pdf_report(question, sql_results, analysis):
     story.append(Spacer(1, 0.3 * inch))
     
     # Question Section
-    story.append(Paragraph("Question", section_heading_style))
+    story.append(Paragraph("<b>Question:</b>", section_heading_style))
     story.append(Spacer(1, 0.1 * inch))
     story.append(Paragraph(question, body_style))
     story.append(Spacer(1, 0.2 * inch))
     
     # Results Section
-    story.append(Paragraph("Query Results", section_heading_style))
+    story.append(Paragraph("<b>Query Results:</b>", section_heading_style))
     story.append(Spacer(1, 0.1 * inch))
     
     # Parse and format results into a table
@@ -352,7 +341,7 @@ def generate_pdf_report(question, sql_results, analysis):
             rows = eval(results_text)
             if rows:
                 # Create table data
-                table_data = [['Region/Category', 'Value']]
+                table_data = [['Category', 'Value']]
                 for row in rows:
                     table_data.append([str(row[0]), str(row[1])])
                 
@@ -366,12 +355,13 @@ def generate_pdf_report(question, sql_results, analysis):
                     ('FONTSIZE', (0, 0), (-1, 0), 12),
                     ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                     ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e2e8f0')),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.grey),
                     ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
                     ('FONTSIZE', (0, 1), (-1, -1), 10),
-                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
                 ]))
                 story.append(t)
+            else:
+                story.append(Paragraph(results_text, body_style))
         else:
             story.append(Paragraph(results_text, body_style))
     except:
@@ -380,52 +370,17 @@ def generate_pdf_report(question, sql_results, analysis):
     story.append(Spacer(1, 0.3 * inch))
     
     # Analysis Section
-    story.append(Paragraph("Detailed Analysis", section_heading_style))
+    story.append(Paragraph("<b>Detailed Analysis:</b>", section_heading_style))
     story.append(Spacer(1, 0.1 * inch))
     
-    # Parse and format analysis sections
-    analysis_sections = analysis.split('\n\n')
-    for section in analysis_sections:
-        if section.strip():
-            # Check if it's a numbered section (1., 2., 3.)
-            if re.match(r'^\d+\.', section.strip()):
-                # Split into heading and content
-                parts = section.split('\n', 1)
-                if len(parts) == 2:
-                    heading, content = parts
-                    # Make heading bold and colored
-                    heading_style = ParagraphStyle(
-                        'AnalysisHeading',
-                        parent=body_style,
-                        fontSize=12,
-                        textColor=colors.HexColor('#667eea'),
-                        fontName='Helvetica-Bold',
-                        spaceAfter=8,
-                        spaceBefore=12
-                    )
-                    story.append(Paragraph(heading, heading_style))
-                    
-                    # Format bullet points
-                    lines = content.split('\n')
-                    for line in lines:
-                        if line.strip():
-                            if line.strip().startswith('*'):
-                                # Bullet point
-                                bullet_style = ParagraphStyle(
-                                    'Bullet',
-                                    parent=body_style,
-                                    leftIndent=20,
-                                    bulletIndent=10,
-                                    spaceAfter=6
-                                )
-                                story.append(Paragraph(line.strip(), bullet_style))
-                            else:
-                                # Regular text
-                                story.append(Paragraph(line.strip(), body_style))
-                else:
-                    story.append(Paragraph(section, body_style))
-            else:
-                story.append(Paragraph(section, body_style))
+    # Format analysis - simpler approach
+    analysis_clean = analysis.replace('**', '<b>').replace('**', '</b>')
+    analysis_paragraphs = analysis_clean.split('\n')
+    
+    for para in analysis_paragraphs:
+        if para.strip():
+            story.append(Paragraph(para.strip(), body_style))
+            story.append(Spacer(1, 0.05 * inch))
     
     story.append(Spacer(1, 0.3 * inch))
     
@@ -435,13 +390,12 @@ def generate_pdf_report(question, sql_results, analysis):
         parent=styles['Normal'],
         fontSize=8,
         textColor=colors.grey,
-        alignment=TA_CENTER,
-        fontName='Helvetica'
+        alignment=TA_CENTER
     )
     story.append(Spacer(1, 0.5 * inch))
-    story.append(Paragraph("─" * 80, footer_style))
+    story.append(Paragraph("_" * 80, footer_style))
     story.append(Spacer(1, 0.1 * inch))
-    story.append(Paragraph("Generated by Insight Pilot | AI-Powered Business Analytics", footer_style))
+    story.append(Paragraph("Generated by Insight Pilot - AI-Powered Business Analytics", footer_style))
     
     # Build PDF
     doc.build(story)
