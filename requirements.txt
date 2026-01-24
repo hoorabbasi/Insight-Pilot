@@ -1,27 +1,9 @@
-# Core
-python-dotenv==1.0.0
-
-# Data
-pandas==2.0.3
-openpyxl==3.1.2
-
-# Database
-sqlalchemy==2.0.23
-
-# Visualization
-matplotlib==3.8.2
-plotly==5.18.0
-
-# UI
-streamlit==1.29.0
-
-# LLM / Agent - Simple modern versions without deprecated imports
-langchain-google-genai==2.0.5
-langchain-community==0.3.12
-langchain-core==0.3.28
-
-# PDF Reports
-reportlab==4.0.7
-
-# Additional dependencies
-google-generativeai==0.8.3
+streamlit
+pandas
+openpyxl
+sqlalchemy
+plotly
+langchain-google-genai
+langchain-community
+reportlab
+google-generativeai
