@@ -263,23 +263,77 @@ def generate_pdf_report(question, sql_results, analysis):
     from xml.sax.saxutils import escape
     
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=72,
+        bottomMargin=72
+    )
     styles = getSampleStyleSheet()
-
-    # Escape special characters to prevent HTML parsing errors
+    
+    story = []
+    
+    # Title
+    story.append(Paragraph("Business Data Analysis Report", styles["Heading1"]))
+    story.append(Spacer(1, 20))
+    
+    # Question Section
+    story.append(Paragraph("<b>Question:</b>", styles["Heading2"]))
+    story.append(Spacer(1, 6))
     question_safe = escape(str(question))
+    story.append(Paragraph(question_safe, styles["BodyText"]))
+    story.append(Spacer(1, 20))
+    
+    # Results Section
+    story.append(Paragraph("<b>Results:</b>", styles["Heading2"]))
+    story.append(Spacer(1, 6))
     sql_results_safe = escape(str(sql_results))
-    analysis_safe = escape(str(analysis))
-
-    story = [
-        Paragraph("Business Data Analysis Report", styles["Heading1"]),
-        Spacer(1, 12),
-        Paragraph(f"<b>Question:</b> {question_safe}", styles["BodyText"]),
-        Spacer(1, 12),
-        Paragraph(f"<b>Results:</b><br/>{sql_results_safe}", styles["BodyText"]),
-        Spacer(1, 12),
-        Paragraph(f"<b>Analysis:</b><br/>{analysis_safe}", styles["BodyText"])
-    ]
+    story.append(Paragraph(sql_results_safe, styles["BodyText"]))
+    story.append(Spacer(1, 20))
+    
+    # Analysis Section - Split into paragraphs
+    story.append(Paragraph("<b>Analysis:</b>", styles["Heading2"]))
+    story.append(Spacer(1, 6))
+    
+    # Clean and split analysis text
+    analysis_text = str(analysis)
+    
+    # Remove markdown headers (###)
+    analysis_text = analysis_text.replace('###', '')
+    
+    # Split by double newlines to get paragraphs
+    paragraphs = analysis_text.split('\n\n')
+    
+    for para in paragraphs:
+        if para.strip():
+            # Clean the paragraph
+            para_clean = para.strip()
+            
+            # Replace bold markdown (**text**) with HTML bold
+            para_clean = para_clean.replace('**', '<b>', 1)
+            if '<b>' in para_clean:
+                para_clean = para_clean.replace('**', '</b>', 1)
+            
+            # Replace remaining ** with nothing
+            para_clean = para_clean.replace('**', '')
+            
+            # Handle bullet points
+            lines = para_clean.split('\n')
+            for line in lines:
+                if line.strip():
+                    line_text = escape(line.strip())
+                    
+                    # Check if it's a bullet point
+                    if line.strip().startswith('*') or line.strip().startswith('-'):
+                        # Remove the * or - and add as indented text
+                        bullet_text = line_text.lstrip('*-').strip()
+                        story.append(Paragraph(f"• {bullet_text}", styles["BodyText"]))
+                    else:
+                        story.append(Paragraph(line_text, styles["BodyText"]))
+                    
+                    story.append(Spacer(1, 6))
 
     doc.build(story)
     buffer.seek(0)
