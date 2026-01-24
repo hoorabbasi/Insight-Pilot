@@ -150,44 +150,43 @@ class AnalysisAgent:
             schema_text += self.database.get_table_info([table])
 
         # SQL Generation Prompt
-        sql_prompt = f"""You are an AI Data Analyst connected to a SQL database.
+        sql_prompt = """You are an AI Data Analyst connected to a SQL database.
 
 STRICT RULES:
-1. You MUST always check the database schema.
-2. You MUST identify correct tables and columns.
-3. You MUST infer column names by meaning.
-4. You MUST generate ONE SQLite SELECT query.
-5. You MUST NOT use assumptions or general knowledge.
-6. You MUST NOT include semicolons.
+1. You MUST always inspect the database schema.
+2. You MUST identify and understand the table name(s) and column names before generating any SQL.
+3. You MUST infer column names by meaning, not by exact wording.
+4. You MUST always generate and execute SQL queries before answering.
+5. You MUST base your answers ONLY on the SQL query results.
+6. You MUST NOT use general knowledge or assumptions.
+7. If the database does not contain enough data to answer, clearly say so.
 
 IMPORTANT COLUMN MATCHING RULE:
-- customer / buyer / client → semantic match
-- Never fail due to wording mismatch
+- If a column name is not an exact match to the user’s wording, you MUST infer the correct column name by meaning.
+- Example: "customer", "buyer", or "client" may refer to columns like customername, client_name, or buyer_name.
+- Always choose the closest matching column based on semantic meaning.
+- Never fail just because the column name is not an exact text match.
 
 BEHAVIOR:
-- Totals → SUM
-- Trends → GROUP BY time
-- Rankings → ORDER BY DESC
-- Strategy questions → top/bottom performers
+- Before answering, always decide which table and which columns are relevant.
+- If the question asks for numbers (totals, averages, trends), generate SQL and return results.
+- If the question asks "why" something happened, analyze historical data, trends, and comparisons from the database.
+- If the question asks for suggestions or growth strategies, first analyze the data, then give data-driven recommendations.
 
 CHART REQUIREMENTS:
 - Use aliases: SELECT category AS label, metric AS value
 - Order logically
 - Limit results (Top 5–10)
 
-OUTPUT RULES:
-- ONLY SQL
-- NO markdown
-- NO explanations
-- NO semicolons
+OUTPUT FORMAT:
+- Start with a concise SQL result summary.
+- Then explain insights in simple language.
+- For "why" questions, explain causes using evidence from the data.
+- For "what should we do" questions, provide actionable recommendations backed by data.
 
-Database schema:
-{schema_text}
+Never hallucinate.
+Never answer without querying the database.
 
-Question:
-{question}
-
-SQL Query:
 """
 
         # Generate SQL using direct LLM invoke
@@ -260,81 +259,168 @@ Respond in 3 sections:
 
 #pdf report 
 def generate_pdf_report(question, sql_results, analysis):
-    from xml.sax.saxutils import escape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT, TA_JUSTIFY
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
     
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=letter,
-        rightMargin=72,
-        leftMargin=72,
-        topMargin=72,
-        bottomMargin=72
+        rightMargin=60,
+        leftMargin=60,
+        topMargin=60,
+        bottomMargin=60
     )
-    styles = getSampleStyleSheet()
     
+    styles = getSampleStyleSheet()
     story = []
     
+    # Custom Styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceAfter=20,
+        alignment=1,  # Center
+        fontName='Helvetica-Bold'
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#34495e'),
+        spaceAfter=10,
+        spaceBefore=15,
+        fontName='Helvetica-Bold',
+        borderWidth=0,
+        borderPadding=5,
+        borderColor=colors.HexColor('#bdc3c7'),
+        backColor=colors.HexColor('#ecf0f1')
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['BodyText'],
+        fontSize=10,
+        leading=14,
+        alignment=TA_JUSTIFY,
+        spaceAfter=8,
+        fontName='Helvetica'
+    )
+    
     # Title
-    story.append(Paragraph("Business Data Analysis Report", styles["Heading1"]))
-    story.append(Spacer(1, 20))
+    story.append(Paragraph("Business Data Analysis Report", title_style))
+    story.append(Spacer(1, 0.3*inch))
     
-    # Question Section
-    story.append(Paragraph("<b>Question:</b>", styles["Heading2"]))
-    story.append(Spacer(1, 6))
-    question_safe = escape(str(question))
-    story.append(Paragraph(question_safe, styles["BodyText"]))
-    story.append(Spacer(1, 20))
+    # Question
+    story.append(Paragraph("QUESTION", heading_style))
+    story.append(Spacer(1, 0.1*inch))
+    story.append(Paragraph(str(question), body_style))
+    story.append(Spacer(1, 0.2*inch))
     
-    # Results Section
-    story.append(Paragraph("<b>Results:</b>", styles["Heading2"]))
-    story.append(Spacer(1, 6))
-    sql_results_safe = escape(str(sql_results))
-    story.append(Paragraph(sql_results_safe, styles["BodyText"]))
-    story.append(Spacer(1, 20))
+    # Results
+    story.append(Paragraph("QUERY RESULTS", heading_style))
+    story.append(Spacer(1, 0.1*inch))
     
-    # Analysis Section - Split into paragraphs
-    story.append(Paragraph("<b>Analysis:</b>", styles["Heading2"]))
-    story.append(Spacer(1, 6))
+    # Format results nicely
+    results_str = str(sql_results)
+    if results_str.startswith('[') and '(' in results_str:
+        # Parse and format as a list
+        try:
+            results_list = eval(results_str)
+            for item in results_list:
+                if isinstance(item, tuple) and len(item) >= 2:
+                    story.append(Paragraph(f"• {item[0]}: {item[1]}", body_style))
+        except:
+            story.append(Paragraph(results_str, body_style))
+    else:
+        story.append(Paragraph(results_str, body_style))
     
-    # Clean and split analysis text
+    story.append(Spacer(1, 0.2*inch))
+    
+    # Analysis
+    story.append(Paragraph("DETAILED ANALYSIS", heading_style))
+    story.append(Spacer(1, 0.1*inch))
+    
+    # Process analysis text
     analysis_text = str(analysis)
     
-    # Remove markdown headers (###)
-    analysis_text = analysis_text.replace('###', '')
+    # Split into sections
+    sections = []
+    current_section = []
     
-    # Split by double newlines to get paragraphs
-    paragraphs = analysis_text.split('\n\n')
+    for line in analysis_text.split('\n'):
+        line = line.strip()
+        if not line:
+            if current_section:
+                sections.append('\n'.join(current_section))
+                current_section = []
+        else:
+            current_section.append(line)
     
-    for para in paragraphs:
-        if para.strip():
-            # Clean the paragraph
-            para_clean = para.strip()
+    if current_section:
+        sections.append('\n'.join(current_section))
+    
+    # Process each section
+    for section in sections:
+        if not section.strip():
+            continue
             
-            # Replace bold markdown (**text**) with HTML bold
-            para_clean = para_clean.replace('**', '<b>', 1)
-            if '<b>' in para_clean:
-                para_clean = para_clean.replace('**', '</b>', 1)
+        # Remove markdown
+        section = section.replace('###', '').replace('**', '')
+        
+        lines = section.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
             
-            # Replace remaining ** with nothing
-            para_clean = para_clean.replace('**', '')
-            
-            # Handle bullet points
-            lines = para_clean.split('\n')
-            for line in lines:
-                if line.strip():
-                    line_text = escape(line.strip())
-                    
-                    # Check if it's a bullet point
-                    if line.strip().startswith('*') or line.strip().startswith('-'):
-                        # Remove the * or - and add as indented text
-                        bullet_text = line_text.lstrip('*-').strip()
-                        story.append(Paragraph(f"• {bullet_text}", styles["BodyText"]))
-                    else:
-                        story.append(Paragraph(line_text, styles["BodyText"]))
-                    
-                    story.append(Spacer(1, 6))
-
+            # Check if it's a numbered heading (1., 2., 3.)
+            if line[0].isdigit() and '. ' in line[:4]:
+                # It's a section heading
+                section_heading_style = ParagraphStyle(
+                    'SectionHeading',
+                    parent=body_style,
+                    fontSize=12,
+                    textColor=colors.HexColor('#2980b9'),
+                    fontName='Helvetica-Bold',
+                    spaceAfter=8,
+                    spaceBefore=12
+                )
+                story.append(Paragraph(line, section_heading_style))
+            elif line.startswith('* ') or line.startswith('- '):
+                # Bullet point
+                bullet_text = line[2:].strip()
+                bullet_style = ParagraphStyle(
+                    'Bullet',
+                    parent=body_style,
+                    leftIndent=20,
+                    spaceAfter=6
+                )
+                story.append(Paragraph(f"• {bullet_text}", bullet_style))
+            else:
+                # Regular paragraph
+                story.append(Paragraph(line, body_style))
+                story.append(Spacer(1, 0.05*inch))
+    
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.grey,
+        alignment=1,  # Center
+    )
+    story.append(Paragraph(f"Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", footer_style))
+    story.append(Spacer(1, 0.05*inch))
+    story.append(Paragraph("Insight Pilot - AI-Powered Business Analytics", footer_style))
+    
     doc.build(story)
     buffer.seek(0)
     return buffer
