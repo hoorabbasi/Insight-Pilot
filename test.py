@@ -130,7 +130,7 @@ def delete_saved_chat(filename):
     return False
 
 
-# AI agent - UPDATED WITHOUT LLMChain
+# AI agent
 
 class AnalysisAgent:
     def __init__(self, database, api_key):
@@ -190,7 +190,7 @@ Question:
 SQL Query:
 """
 
-        # Generate SQL using direct LLM invoke
+        # Generate SQL using LLM invoke
         try:
             raw_sql = self.llm.invoke(sql_prompt).content
         except Exception as e:
@@ -201,7 +201,7 @@ SQL Query:
                 "sql_results": None
             }
 
-        #SQL SANITIZATION
+        #SQL santize
         match = re.search(r"(SELECT\s+.*)", raw_sql, re.IGNORECASE | re.DOTALL)
         if not match:
             return {
@@ -227,10 +227,10 @@ SQL Query:
         df = sql_result_to_dataframe(results)
         chart = create_chart(df, question) if df is not None and should_visualize(question) else None
 
-        # Format results CLEARLY for analysis - THIS IS THE KEY FIX
+        # Format results
         results_str = str(results)
         
-        # Create a very clear, unambiguous summary
+        # Clear summary
         formatted_summary = ""
         
         if '[(' in results_str:
@@ -258,7 +258,7 @@ Complete list of ALL {row_count} records:
         else:
             formatted_summary = f"Query results:\n{results_str}"
 
-        # Analysis Generation Prompt - VERY EXPLICIT
+        # analysis prompt
         analysis_prompt = f"""You are a business analyst reviewing database query results.
 
 {formatted_summary}
@@ -350,12 +350,12 @@ def generate_pdf_report(question, sql_results, analysis):
         spaceAfter=10
     )
     
-    # QUESTION
+    # Qs
     story.append(Paragraph("QUESTION", heading_style))
     story.append(Paragraph(str(question), body_style))
     story.append(Spacer(1, 0.15*inch))
     
-    # RESULTS
+    # Res
     story.append(Paragraph("RESULTS", heading_style))
     results_text = str(sql_results)
     
